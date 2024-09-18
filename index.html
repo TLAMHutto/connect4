@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unbeatable Connect Four AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #game-container {
+            text-align: center;
+        }
+        #board {
+            display: inline-grid;
+            grid-template-columns: repeat(7, 50px);
+            grid-gap: 5px;
+            background-color: #0077be;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .red {
+            background-color: #ff4136;
+        }
+        .yellow {
+            background-color: #ffdc00;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Connect Four vs AI</h1>
+        <div id="board"></div>
+        <p id="status"></p>
+        <button id="reset-button">Reset Game</button>
+    </div>
+    <script>
+        const ROWS = 6;
+        const COLS = 7;
+        const EMPTY = 0;
+        const PLAYER = 1;
+        const AI = 2;
+
+        let board = [];
+        let currentPlayer = PLAYER;
+        let gameOver = false;
+
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        const resetButton = document.getElementById('reset-button');
+
+        function initializeBoard() {
+            board = Array(ROWS).fill().map(() => Array(COLS).fill(EMPTY));
+            boardElement.innerHTML = '';
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.addEventListener('click', () => makeMove(col));
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function updateBoard() {
+            const cells = boardElement.getElementsByClassName('cell');
+            for (let i = 0; i < cells.length; i++) {
+                const row = parseInt(cells[i].dataset.row);
+                const col = parseInt(cells[i].dataset.col);
+                cells[i].className = 'cell';
+                if (board[row][col] === PLAYER) {
+                    cells[i].classList.add('red');
+                } else if (board[row][col] === AI) {
+                    cells[i].classList.add('yellow');
+                }
+            }
+        }
+
+        function makeMove(col) {
+            if (gameOver || currentPlayer !== PLAYER) return;
+
+            const row = getLowestEmptyRow(board, col);
+            if (row === -1) return;
+
+            board[row][col] = PLAYER;
+            updateBoard();
+
+            if (checkWin(row, col, PLAYER, board)) {
+                endGame('You win!');
+            } else if (isBoardFull(board)) {
+                endGame('It\'s a draw!');
+            } else {
+                currentPlayer = AI;
+                statusElement.textContent = 'AI is thinking...';
+                setTimeout(makeAIMove, 500);
+            }
+        }
+
+        function makeAIMove() {
+            const [bestMove, _] = minimax(board, 6, -Infinity, Infinity, true);
+            const col = bestMove;
+            const row = getLowestEmptyRow(board, col);
+
+            board[row][col] = AI;
+            updateBoard();
+
+            if (checkWin(row, col, AI, board)) {
+                endGame('AI wins!');
+            } else if (isBoardFull(board)) {
+                endGame('It\'s a draw!');
+            } else {
+                currentPlayer = PLAYER;
+                statusElement.textContent = 'Your turn';
+            }
+        }
+
+        function minimax(board, depth, alpha, beta, maximizingPlayer) {
+            if (depth === 0 || isTerminalNode(board)) {
+                return [null, evaluateBoard(board)];
+            }
+
+            const validMoves = getValidMoves(board);
+            let bestMove = validMoves[0];
+
+            if (maximizingPlayer) {
+                let maxEval = -Infinity;
+                for (const col of validMoves) {
+                    const row = getLowestEmptyRow(board, col);
+                    const newBoard = board.map(row => [...row]);
+                    newBoard[row][col] = AI;
+                    const [_, eval] = minimax(newBoard, depth - 1, alpha, beta, false);
+                    if (eval > maxEval) {
+                        maxEval = eval;
+                        bestMove = col;
+                    }
+                    alpha = Math.max(alpha, eval);
+                    if (beta <= alpha) break;
+                }
+                return [bestMove, maxEval];
+            } else {
+                let minEval = Infinity;
+                for (const col of validMoves) {
+                    const row = getLowestEmptyRow(board, col);
+                    const newBoard = board.map(row => [...row]);
+                    newBoard[row][col] = PLAYER;
+                    const [_, eval] = minimax(newBoard, depth - 1, alpha, beta, true);
+                    if (eval < minEval) {
+                        minEval = eval;
+                        bestMove = col;
+                    }
+                    beta = Math.min(beta, eval);
+                    if (beta <= alpha) break;
+                }
+                return [bestMove, minEval];
+            }
+        }
+
+        function getValidMoves(board) {
+            return Array.from({length: COLS}, (_, i) => i).filter(col => getLowestEmptyRow(board, col) !== -1);
+        }
+
+        function isTerminalNode(board) {
+            return checkWin(null, null, PLAYER, board) || checkWin(null, null, AI, board) || isBoardFull(board);
+        }
+
+        function evaluateBoard(board) {
+            if (checkWin(null, null, AI, board)) return 1000;
+            if (checkWin(null, null, PLAYER, board)) return -1000;
+            return evaluatePosition(board, AI) - evaluatePosition(board, PLAYER);
+        }
+
+        function evaluatePosition(board, player) {
+            let score = 0;
+            // Horizontal
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS - 3; col++) {
+                    score += evaluateWindow(board[row].slice(col, col + 4), player);
+                }
+            }
+            // Vertical
+            for (let col = 0; col < COLS; col++) {
+                for (let row = 0; row < ROWS - 3; row++) {
+                    const window = [board[row][col], board[row+1][col], board[row+2][col], board[row+3][col]];
+                    score += evaluateWindow(window, player);
+                }
+            }
+            // Diagonal (positive slope)
+            for (let row = 0; row < ROWS - 3; row++) {
+                for (let col = 0; col < COLS - 3; col++) {
+                    const window = [board[row][col], board[row+1][col+1], board[row+2][col+2], board[row+3][col+3]];
+                    score += evaluateWindow(window, player);
+                }
+            }
+            // Diagonal (negative slope)
+            for (let row = 3; row < ROWS; row++) {
+                for (let col = 0; col < COLS - 3; col++) {
+                    const window = [board[row][col], board[row-1][col+1], board[row-2][col+2], board[row-3][col+3]];
+                    score += evaluateWindow(window, player);
+                }
+            }
+            return score;
+        }
+
+        function evaluateWindow(window, player) {
+            const opponent = player === PLAYER ? AI : PLAYER;
+            const playerCount = window.filter(cell => cell === player).length;
+            const emptyCount = window.filter(cell => cell === EMPTY).length;
+
+            if (playerCount === 4) return 100;
+            if (playerCount === 3 && emptyCount === 1) return 5;
+            if (playerCount === 2 && emptyCount === 2) return 2;
+            if (window.filter(cell => cell === opponent).length === 3 && emptyCount === 1) return 4;
+            return 0;
+        }
+
+        function getLowestEmptyRow(board, col) {
+            for (let row = ROWS - 1; row >= 0; row--) {
+                if (board[row][col] === EMPTY) {
+                    return row;
+                }
+            }
+            return -1;
+        }
+
+        function checkWin(row, col, player, checkBoard) {
+            const directions = [
+                [0, 1], [1, 0], [1, 1], [1, -1]
+            ];
+
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < COLS; j++) {
+                    if (checkBoard[i][j] !== player) continue;
+
+                    for (const [dx, dy] of directions) {
+                        let count = 1;
+                        for (let k = 1; k <= 3; k++) {
+                            const newRow = i + k * dx;
+                            const newCol = j + k * dy;
+                            if (newRow < 0 || newRow >= ROWS || newCol < 0 || newCol >= COLS) break;
+                            if (checkBoard[newRow][newCol] !== player) break;
+                            count++;
+                        }
+                        if (count >= 4) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function isBoardFull(checkBoard) {
+            return checkBoard.every(row => row.every(cell => cell !== EMPTY));
+        }
+
+        function endGame(message) {
+            gameOver = true;
+            statusElement.textContent = message;
+        }
+
+        function resetGame() {
+            initializeBoard();
+            currentPlayer = PLAYER;
+            gameOver = false;
+            statusElement.textContent = 'Your turn';
+            updateBoard();
+        }
+
+        resetButton.addEventListener('click', resetGame);
+
+        initializeBoard();
+        resetGame();
+    </script>
+</body>
+</html>
